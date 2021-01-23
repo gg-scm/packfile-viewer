@@ -1,0 +1,6 @@
+/packfile-viewer
+/packfile-viewer.exe
+node_modules/
+/client/dist/
+*.tsbuildinfo
+packs/

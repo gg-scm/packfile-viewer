@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+  <title>
+    {{- block "title" . -}}
+      {{ block "pageTitle" . }}{{ end }} - packfile viewer
+    {{- end -}}
+  </title>
+  <link rel="stylesheet" type="text/css" href="/app.css">
+  <script type="text/javascript" src="/app.js" defer></script>
+</head>
+<body>
+  <header class="Header">
+    <h1>packfile viewer</h1>
+  </header>
+  <main>
+    {{- block "main" . }}{{ end -}}
+  </main>
+</body>
+</html>
