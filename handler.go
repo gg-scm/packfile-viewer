@@ -28,6 +28,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -110,22 +111,51 @@ func (h htmlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var t *template.Template
-	var contentType string
-	if resp.stream {
-		t, err = template.ParseFS(h.files,
-			"templates/"+resp.templateName,
-			"templates/partials/*.html",
-		)
-		contentType = turboStreamContentType + utf8Params
-	} else {
-		t, err = template.ParseFS(h.files,
-			"templates/base.html",
-			"templates/"+resp.templateName,
-			"templates/partials/*.html",
-		)
-		contentType = htmlContentType + utf8Params
+	funcMap := template.FuncMap{
+		"byteSize": func(v reflect.Value) (string, error) {
+			var f float64
+			switch v.Kind() {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				f = float64(v.Int())
+			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				f = float64(v.Uint())
+			default:
+				return "", fmt.Errorf("type is %v instead of int-like", v.Type())
+			}
+			if f < 1024 {
+				return fmt.Sprintf("%d B", int(f)), nil
+			}
+			f /= 1024
+			if f < 1024 {
+				return fmt.Sprintf("%.1f KiB", f), nil
+			}
+			f /= 1024
+			if f < 1024 {
+				return fmt.Sprintf("%.1f MiB", f), nil
+			}
+			return fmt.Sprintf("%.1f GiB", f), nil
+		},
 	}
+	var contentType string
+	var t *template.Template
+	if resp.stream {
+		contentType = turboStreamContentType + utf8Params
+		t = template.New(resp.templateName)
+		t.Funcs(funcMap)
+	} else {
+		contentType = htmlContentType + utf8Params
+		t = template.New("base.html")
+		t.Funcs(funcMap)
+		if _, err := t.ParseFS(h.files, "templates/base.html"); err != nil {
+			log.Errorf(ctx, "Render %s: %v", r.URL.Path, err)
+			http.Error(w, "Templates failed to parse: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	t, err = t.ParseFS(h.files,
+		"templates/"+resp.templateName,
+		"templates/partials/*.html",
+	)
 	if err != nil {
 		// Fine to expose error to client, since templates are trusted and not based
 		// on user input.

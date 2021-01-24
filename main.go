@@ -89,6 +89,7 @@ func (app *application) index(ctx context.Context, r *request) (*response, error
 	type packInfo struct {
 		Name    string
 		ModTime time.Time
+		Size    int64
 	}
 	var data struct {
 		Packfiles []*packInfo
@@ -105,6 +106,7 @@ func (app *application) index(ctx context.Context, r *request) (*response, error
 			}
 			if stat, err := ent.Info(); err == nil {
 				info.ModTime = stat.ModTime()
+				info.Size = stat.Size()
 			}
 			data.Packfiles = append(data.Packfiles, info)
 		}

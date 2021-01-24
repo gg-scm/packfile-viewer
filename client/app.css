@@ -19,6 +19,16 @@ SPDX-License-Identifier: Apache-2.0
 html, body {
   font-family: Arial, Helvetica, sans-serif;
 }
+.IndexTable-name {
+  padding: 0 0.3rem 0 0;
+}
+.IndexTable-size {
+  padding: 0 0.3rem;
+  text-align: right;
+}
+.IndexTable-time {
+  padding: 0 0 0 0.3rem;
+}
 #PullForm-url {
   width: 30em;
 }

@@ -22,12 +22,15 @@
   <h2>Packfiles</h2>
   {{- with .Packfiles }}
   <table>
-    {{- range . }}
-    <tr>
-      <td><a href="/packs/{{ .Name }}">{{ .Name }}</a></td>
-      <td>{{ template "time.html" .ModTime }}</td>
-    </tr>
-    {{- end }}
+    <tbody>
+      {{- range . }}
+      <tr>
+        <td class="IndexTable-name"><a href="/packs/{{ .Name }}">{{ .Name }}</a></td>
+        <td class="IndexTable-size">{{ .Size | byteSize }}</td>
+        <td class="IndexTable-time">{{ template "time.html" .ModTime }}</td>
+      </tr>
+      {{- end }}
+    </tbody>
   </table>
   {{- else }}
   <p>No packfiles available. Use the controls above to pull one.</p>

@@ -18,7 +18,7 @@
     {{- range . }}
     <tr>
       <th scope="row" class="PackfileTable-offset">{{ .Offset }}</th>
-      <td class="PackfileTable-size">{{ .DecompressedSize }}</td>
+      <td class="PackfileTable-size">{{ .DecompressedSize | byteSize }}</td>
       <td class="PackfileTable-deltified">
         {{- if eq .PackType $.OffsetDelta }}offset
         {{- else if eq .PackType $.RefDelta }}ID
