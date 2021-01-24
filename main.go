@@ -17,6 +17,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"embed"
 	"errors"
@@ -25,12 +26,14 @@ import (
 	"io"
 	"io/fs"
 	"io/ioutil"
+	"mime"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -80,6 +83,10 @@ func (app *application) initRouter() {
 	app.router.Handle("/packs/{pack:[-_a-zA-Z0-9]+}/{object:[a-fA-F0-9]+}", handlers.MethodHandler{
 		http.MethodHead: app.newHTMLHandler(app.viewObject),
 		http.MethodGet:  app.newHTMLHandler(app.viewObject),
+	})
+	app.router.Handle("/packs/{pack:[-_a-zA-Z0-9]+}/raw/{object:[a-fA-F0-9]+}", handlers.MethodHandler{
+		http.MethodHead: http.HandlerFunc(app.downloadObject),
+		http.MethodGet:  http.HandlerFunc(app.downloadObject),
 	})
 
 	app.router.Handle("/app.js", app.newStaticHandler("client/dist/app.js"))
@@ -377,12 +384,13 @@ func (app *application) viewObject(ctx context.Context, r *request) (*response, 
 		PackName string
 		ObjectID githash.SHA1
 
-		Type   object.Type
-		Tree   object.Tree
-		Commit *object.Commit
-		Tag    *object.Tag
-		Raw    []byte
-		TooBig bool
+		object.Prefix
+		Tree      object.Tree
+		Commit    *object.Commit
+		Tag       *object.Tag
+		Raw       []byte
+		MediaType string
+		TooBig    bool
 	}
 	data.PackName = r.pathVars["pack"]
 	var err error
@@ -412,21 +420,23 @@ func (app *application) viewObject(ctx context.Context, r *request) (*response, 
 	}
 	bf := packfile.NewBufferedReadSeeker(f)
 	var content io.Reader
-	data.Type, content, err = new(packfile.Undeltifier).Undeltify(bf, idx.Offsets[i], &packfile.UndeltifyOptions{
+	data.Prefix, content, err = new(packfile.Undeltifier).Undeltify(bf, idx.Offsets[i], &packfile.UndeltifyOptions{
 		Index: idx,
 	})
 	if err != nil {
 		return nil, err
 	}
+	contentType, content := sniff(content)
+	data.MediaType, _, _ = mime.ParseMediaType(contentType)
 	const rawLimit = 100 << 10 // 100 KiB
-	data.Raw, err = ioutil.ReadAll(io.LimitReader(content, rawLimit+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(data.Raw) > rawLimit {
+	if data.Size > rawLimit {
 		data.Raw = nil
 		data.TooBig = true
 	} else {
+		data.Raw, err = ioutil.ReadAll(io.LimitReader(content, data.Size))
+		if err != nil {
+			return nil, err
+		}
 		switch data.Type {
 		case object.TypeTree:
 			data.Tree, _ = object.ParseTree(data.Raw)
@@ -440,6 +450,123 @@ func (app *application) viewObject(ctx context.Context, r *request) (*response, 
 		templateName: "object.html",
 		data:         data,
 	}, nil
+}
+
+func (app *application) downloadObject(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	pathVars := mux.Vars(r)
+	packName := pathVars["pack"]
+	var err error
+	objectID, err := githash.ParseSHA1(pathVars["object"])
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	f, err := os.Open(filepath.Join(app.dir, packName+packfileExtension))
+	if os.IsNotExist(err) {
+		http.NotFound(w, r)
+		return
+	}
+	respondError := func(err error) {
+		log.Errorf(ctx, "Download object %v from %s: %v", objectID, packName, err)
+		http.Error(w, "There was a problem downloading the object. Check the server logs.", http.StatusInternalServerError)
+	}
+	if err != nil {
+		respondError(err)
+		return
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		respondError(err)
+		return
+	}
+	idx, err := app.ensureIndex(ctx, packName, f, info.Size())
+	if err != nil {
+		respondError(err)
+		return
+	}
+	i := idx.FindID(objectID)
+	if i == -1 {
+		http.NotFound(w, r)
+		return
+	}
+	etagValue := `"` + objectID.String() + `"`
+	for _, part := range strings.Split(r.Header.Get("If-None-Match"), ",") {
+		if strings.TrimSpace(part) == etagValue {
+			w.Header().Set("ETag", etagValue)
+			w.Header().Set("Cache-Control", "immutable")
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+	}
+
+	bf := packfile.NewBufferedReadSeeker(f)
+	prefix, content, err := new(packfile.Undeltifier).Undeltify(bf, idx.Offsets[i], &packfile.UndeltifyOptions{
+		Index: idx,
+	})
+	if err != nil {
+		respondError(err)
+		return
+	}
+	w.Header().Set("Content-Length", strconv.FormatInt(prefix.Size, 10))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	contentType := "application/octet-stream"
+	switch prefix.Type {
+	case object.TypeCommit, object.TypeTag:
+		// Both of these are safe to transmit as text.
+		contentType = "text/plain; charset=utf-8"
+	case object.TypeBlob:
+		contentType, content = sniff(content)
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "immutable")
+	w.Header().Set("ETag", etagValue)
+	if r.Method != http.MethodHead {
+		io.Copy(w, content)
+	}
+}
+
+const binaryMediaType = "application/octet-stream"
+
+func sniff(r io.Reader) (string, io.Reader) {
+	buf := make([]byte, 512)
+	n, _ := io.ReadFull(r, buf)
+	buf = buf[:n]
+	sniffedContentType := http.DetectContentType(buf)
+	// MIME types that we permit to serve. Importantly, we don't want to serve
+	// anything that can be interpreted as HTML or a webpage resource
+	// (e.g. CSS, JavaScript).
+	allowed := map[string]struct{}{
+		"application/ogg":              {},
+		"application/pdf":              {},
+		"application/postscript":       {},
+		"application/x-gzip":           {},
+		"application/x-rar-compressed": {},
+		"application/zip":              {},
+		"audio/aiff":                   {},
+		"audio/basic":                  {},
+		"audio/midi":                   {},
+		"audio/mpeg":                   {},
+		"audio/wave":                   {},
+		"image/bmp":                    {},
+		"image/gif":                    {},
+		"image/jpeg":                   {},
+		"image/png":                    {},
+		"image/webp":                   {},
+		"image/x-icon":                 {},
+		"text/plain":                   {},
+		"video/avi":                    {},
+		"video/mp4":                    {},
+		"video/webm":                   {},
+	}
+	contentType := binaryMediaType
+	if mt, _, err := mime.ParseMediaType(sniffedContentType); err == nil {
+		if _, ok := allowed[mt]; ok {
+			contentType = sniffedContentType
+		}
+	}
+	return contentType, io.MultiReader(bytes.NewReader(buf), r)
 }
 
 func main() {

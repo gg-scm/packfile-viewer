@@ -1,18 +1,34 @@
 {{ define "pageTitle" }}{{ .Type }} {{ .ObjectID.Short }}{{ end }}
 
 {{ define "main" }}
-<h1>{{ .Type }} {{ .ObjectID }}</h1>
-<div class="Object-navBack">Back to <a href="/packs/{{ .PackName }}">packfile</a></div>
+<div class="Object-navBack"><a href="/packs/{{ .PackName }}">{{ .PackName }}</a> /</div>
+<h1 class="PageTitle">{{ .Type }} {{ .ObjectID }}</h1>
+<div class="Object-raw">
+  <a href="/packs/{{ .PackName }}/raw/{{ .ObjectID }}" data-turbo="false">Raw</a>
+</div>
 
 {{- if eq .Type "blob" }}
-  {{- if .TooBig }}
-  <p>Blob is too large to be shown.</p>
-  {{- else if isBinary .Raw }}
-  <p>Binary blob</p>
+  {{- if eq .MediaType "image/bmp" "image/gif" "image/jpeg" "image/png" "image/webp" }}
+    <img
+      src="/packs/{{ .PackName }}/raw/{{ .ObjectID }}"
+      class="Blob--image"
+      alt="{{ .ObjectID }}">
+  {{- else if eq .MediaType "text/plain" }}
+    {{- if .TooBig }}
+      <p>
+        Blob is too large to be shown ({{ .Size | byteSize }}).
+        <a href="/packs/{{ .PackName }}/raw/{{ .ObjectID }}" data-turbo="false">View raw</a>
+      </p>
+    {{- else }}
+      <pre class="Blob">
+        {{- .Raw | printf "%s" -}}
+      </pre>
+    {{- end }}
   {{- else }}
-    <pre class="Blob">
-      {{- .Raw | printf "%s" -}}
-    </pre>
+    <p>
+      {{ .Size | byteSize }} binary blob (detected {{ .MediaType }}).
+      <a href="/packs/{{ .PackName }}/raw/{{ .ObjectID }}" data-turbo="false">Download</a>
+    </p>
   {{- end }}
 {{- end }}
 
