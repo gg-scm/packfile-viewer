@@ -21,14 +21,20 @@ import (
 	"embed"
 	"errors"
 	"flag"
+	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
+	"gg-scm.io/pkg/git/githash"
+	"gg-scm.io/pkg/git/packfile/client"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"golang.org/x/sys/unix"
@@ -58,18 +64,195 @@ func (app *application) initRouter() {
 		http.MethodHead: app.newHTMLHandler(app.index),
 		http.MethodGet:  app.newHTMLHandler(app.index),
 	})
-	app.router.Handle("/app.js", handlers.MethodHandler{
-		http.MethodHead: app.newStaticHandler("client/dist/app.js"),
-		http.MethodGet:  app.newStaticHandler("client/dist/app.js"),
+	app.router.Handle("/pull", handlers.MethodHandler{
+		http.MethodHead: app.newHTMLHandler(app.pullForm),
+		http.MethodGet:  app.newHTMLHandler(app.pullForm),
+		http.MethodPost: app.newHTMLHandler(app.pull),
 	})
-	app.router.Handle("/app.css", handlers.MethodHandler{
-		http.MethodHead: app.newStaticHandler("client/dist/app.css"),
-		http.MethodGet:  app.newStaticHandler("client/dist/app.css"),
+	app.router.Handle("/packs/{pack:[-_a-zA-Z0-9]+}", handlers.MethodHandler{
+		http.MethodHead: app.newHTMLHandler(app.viewPackfile),
+		http.MethodGet:  app.newHTMLHandler(app.viewPackfile),
 	})
+	app.router.Handle("/app.js", app.newStaticHandler("client/dist/app.js"))
+	app.router.Handle("/app.css", app.newStaticHandler("client/dist/app.css"))
 }
 
+const packfileExtension = ".pack"
+
 func (app *application) index(ctx context.Context, r *request) (*response, error) {
-	return &response{templateName: "index.html"}, nil
+	var data struct {
+		Packfiles []string
+	}
+	if entries, err := os.ReadDir(app.dir); err != nil && !os.IsNotExist(err) {
+		return nil, err
+	} else if err == nil {
+		for _, ent := range entries {
+			if name := ent.Name(); filepath.Ext(name) == packfileExtension {
+				data.Packfiles = append(data.Packfiles, strings.TrimSuffix(name, packfileExtension))
+			}
+		}
+	}
+	return &response{
+		templateName: "index.html",
+		data:         data,
+	}, nil
+}
+
+type pullFormParams struct {
+	URL  string
+	Refs []*pullFormRef
+
+	URLError  string
+	RefsError string
+}
+
+type pullFormRef struct {
+	*client.Ref
+	Selected bool
+}
+
+func (app *application) pullForm(ctx context.Context, r *request) (*response, error) {
+	data := new(pullFormParams)
+	resp := &response{
+		templateName: "pull.html",
+		data:         data,
+	}
+
+	data.URL = r.form.Get("url")
+	if data.URL == "" {
+		return resp, nil
+	}
+	u, err := client.ParseURL(data.URL)
+	if err != nil {
+		data.URLError = err.Error()
+		return resp, nil
+	}
+	remote, err := client.NewRemote(u, nil)
+	if err != nil {
+		data.URLError = err.Error()
+		return resp, nil
+	}
+	stream, err := remote.StartPull(ctx)
+	if err != nil {
+		data.URLError = err.Error()
+		return resp, nil
+	}
+	defer stream.Close()
+	refs, err := stream.ListRefs()
+	if err != nil {
+		data.URLError = err.Error()
+		return resp, nil
+	}
+	for _, ref := range refs {
+		data.Refs = append(data.Refs, &pullFormRef{
+			Ref:      ref,
+			Selected: ref.Name == githash.Head,
+		})
+	}
+	return resp, nil
+}
+
+func (app *application) pull(ctx context.Context, r *request) (*response, error) {
+	data := new(pullFormParams)
+	resp := &response{
+		templateName: "pull_stream.html",
+		stream:       true,
+		data:         data,
+	}
+
+	data.URL = r.form.Get("url")
+	u, err := client.ParseURL(data.URL)
+	if err != nil {
+		data.URLError = err.Error()
+		return resp, nil
+	}
+	remote, err := client.NewRemote(u, nil)
+	if err != nil {
+		data.URLError = err.Error()
+		return resp, nil
+	}
+	stream, err := remote.StartPull(ctx)
+	if err != nil {
+		data.URLError = err.Error()
+		return resp, nil
+	}
+	defer stream.Close()
+
+	refs, err := stream.ListRefs()
+	if err != nil {
+		data.URLError = err.Error()
+		return resp, nil
+	}
+	for _, ref := range refs {
+		selected := false
+		for _, refName := range r.form["ref"] {
+			if ref.Name.String() == refName {
+				selected = true
+				break
+			}
+		}
+		data.Refs = append(data.Refs, &pullFormRef{
+			Ref:      ref,
+			Selected: selected,
+		})
+	}
+	pullRequest := new(client.PullRequest)
+requestRefs:
+	for _, refName := range r.form["ref"] {
+		for _, ref := range data.Refs {
+			if ref.Name.String() == refName {
+				pullRequest.Want = append(pullRequest.Want, ref.ObjectID)
+				continue requestRefs
+			}
+		}
+		data.RefsError = fmt.Sprintf("Unknown ref: %q", refName)
+		return resp, nil
+	}
+
+	pullResponse, err := stream.Negotiate(pullRequest)
+	if err != nil {
+		data.URLError = err.Error()
+		return resp, nil
+	}
+	defer pullResponse.Packfile.Close()
+
+	if err := os.MkdirAll(app.dir, 0o777); err != nil {
+		return nil, err
+	}
+	f, err := os.CreateTemp(app.dir, "*"+packfileExtension)
+	if err != nil {
+		return nil, err
+	}
+	fname := f.Name()
+	_, copyErr := io.Copy(f, pullResponse.Packfile)
+	closeErr := f.Close()
+	if copyErr != nil {
+		return nil, copyErr
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	packName := strings.TrimSuffix(filepath.Base(fname), ".pack")
+	return nil, seeOther("/packs/" + packName)
+}
+
+func (app *application) viewPackfile(ctx context.Context, r *request) (*response, error) {
+	var data struct {
+		Name string
+	}
+	data.Name = r.pathVars["pack"]
+	f, err := os.Open(filepath.Join(app.dir, data.Name+packfileExtension))
+	if os.IsNotExist(err) {
+		return nil, errNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return &response{
+		templateName: "packfile.html",
+		data:         data,
+	}, nil
 }
 
 func main() {

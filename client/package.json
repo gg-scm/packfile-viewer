@@ -10,7 +10,7 @@
   },
   "author": "Ross Light",
   "dependencies": {
-    "@hotwired/turbo": "^7.0.0-beta.1",
+    "@hotwired/turbo": "^7.0.0-beta.3",
     "esbuild": "^0.8.26",
     "stimulus": "^2.0.0"
   },

@@ -17,4 +17,7 @@
 import { Application } from "stimulus";
 import "@hotwired/turbo";
 
-Application.start();
+import PullFormController from './controllers/pull_form_controller';
+
+const app = Application.start();
+app.register('pull-form', PullFormController);

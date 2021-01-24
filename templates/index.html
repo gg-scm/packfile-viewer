@@ -1,5 +1,32 @@
 {{ define "title" }}packfile viewer{{ end }}
 
 {{ define "main" }}
-  <p>Hello, World!</p>
+  <div>
+    <form method="GET" action="/pull">
+      <div>
+        <label for="IndexPullForm-url">Git URL:</label>
+        <input
+          type="text"
+          inputmode="url"
+          autofocus
+          id="IndexPullForm-url"
+          name="url"
+          data-pull-form-target="url">
+        <input
+          type="submit"
+          value="Load">
+      </div>
+    </form>
+  </div>
+
+  <h2>Packfiles</h2>
+  {{- with .Packfiles }}
+  <ul>
+    {{- range . }}
+    <li><a href="/packs/{{ . }}">{{ . }}</a></li>
+    {{- end }}
+  </ul>
+  {{- else }}
+  <p>No packfiles available. Use the controls above to pull one.</p>
+  {{- end }}
 {{ end }}

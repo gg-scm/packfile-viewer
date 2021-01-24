@@ -19,3 +19,20 @@ SPDX-License-Identifier: Apache-2.0
 html, body {
   font-family: Arial, Helvetica, sans-serif;
 }
+
+#PullForm-url {
+  width: 30em;
+}
+
+#PullForm-refsSelect {
+  min-height: 10em;
+  width: 20em;
+}
+
+label {
+  font-weight: bold;
+}
+
+.FormError {
+  color: #421717;
+}

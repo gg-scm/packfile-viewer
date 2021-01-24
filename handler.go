@@ -22,22 +22,28 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"html/template"
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
+	"zombiezen.com/go/bass/accept"
 	"zombiezen.com/go/log"
 )
 
 type request struct {
-	pathVars map[string]string
+	pathVars            map[string]string
+	form                url.Values
+	supportsTurboStream bool
 }
 
 type response struct {
+	stream       bool
 	templateName string
 	data         interface{}
 }
@@ -51,11 +57,52 @@ func (app *application) newHTMLHandler(f func(context.Context, *request) (*respo
 	return htmlHandler{app.files, f}
 }
 
+const (
+	htmlContentType        = "text/html"
+	turboStreamContentType = "text/vnd.turbo-stream.html"
+
+	utf8Params = "; charset=utf-8"
+)
+
 func (h htmlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	resp, err := h.f(ctx, &request{
+	r.ParseForm()
+	if err := r.ParseMultipartForm(1 << 20 /* 1 MiB */); err != nil && !errors.Is(err, http.ErrNotMultipart) {
+		http.Error(w, "Invalid form: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if r.MultipartForm != nil {
+		// Don't need to keep any files for now, so removing.
+		if err := r.MultipartForm.RemoveAll(); err != nil {
+			log.Warnf(ctx, "Cleaning up multipart form data: %v", err)
+		}
+	}
+	accept, err := accept.ParseHeader(r.Header.Get("Accept"))
+	if err != nil {
+		http.Error(w, "Invalid Accept header: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	req := &request{
 		pathVars: mux.Vars(r),
+		form:     r.Form,
+	}
+	turboStreamQuality := accept.Quality(turboStreamContentType, map[string][]string{
+		"charset": {"utf-8"},
 	})
+	if turboStreamQuality > 0 {
+		req.supportsTurboStream = true
+	}
+	resp, err := h.f(ctx, req)
+	if errors.Is(err, errNotFound) {
+		// TODO(someday): Render 404.html
+		http.NotFound(w, r)
+		return
+	}
+	if redirect := (*redirectError)(nil); errors.As(err, &redirect) {
+		http.Redirect(w, r, redirect.location, redirect.statusCode)
+		return
+	}
 	const genericMessage = "Error while serving page. Check server logs."
 	if err != nil {
 		log.Errorf(ctx, "%s: %v", r.URL.Path, err)
@@ -63,8 +110,22 @@ func (h htmlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	const baseName = "base.html"
-	t, err := template.ParseFS(h.files, "templates/"+baseName, "templates/"+resp.templateName)
+	var t *template.Template
+	var contentType string
+	if resp.stream {
+		t, err = template.ParseFS(h.files,
+			"templates/"+resp.templateName,
+			"templates/partials/*.html",
+		)
+		contentType = turboStreamContentType + utf8Params
+	} else {
+		t, err = template.ParseFS(h.files,
+			"templates/base.html",
+			"templates/"+resp.templateName,
+			"templates/partials/*.html",
+		)
+		contentType = htmlContentType + utf8Params
+	}
 	if err != nil {
 		// Fine to expose error to client, since templates are trusted and not based
 		// on user input.
@@ -73,16 +134,35 @@ func (h htmlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	buf := new(bytes.Buffer)
-	if err := t.ExecuteTemplate(buf, baseName, resp.data); err != nil {
+	if err := t.Execute(buf, resp.data); err != nil {
 		log.Errorf(ctx, "Render %s: %v", r.URL.Path, err)
 		http.Error(w, genericMessage, http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Length", strconv.Itoa(buf.Len()))
 	if r.Method != http.MethodHead {
 		io.Copy(w, buf)
 	}
+}
+
+var errNotFound = errors.New("not found")
+
+type redirectError struct {
+	statusCode int
+	location   string
+}
+
+func seeOther(location string) *redirectError {
+	return &redirectError{
+		statusCode: http.StatusSeeOther,
+		location:   location,
+	}
+}
+
+func (e *redirectError) Error() string {
+	return fmt.Sprintf("http %d (%s) redirect to %s",
+		e.statusCode, http.StatusText(e.statusCode), e.location)
 }
 
 type staticFileHandler struct {
@@ -96,6 +176,11 @@ func (app *application) newStaticHandler(name string) staticFileHandler {
 
 func (h staticFileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", http.MethodGet+", "+http.MethodHead)
+		http.Error(w, "Only GET and HEAD allowed on resource", http.StatusMethodNotAllowed)
+		return
+	}
 	data, err := fs.ReadFile(h.files, h.name)
 	if errors.Is(err, fs.ErrNotExist) {
 		http.NotFound(w, r)

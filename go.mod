@@ -19,8 +19,10 @@ module gg-scm.io/packfile-viewer
 go 1.16
 
 require (
+	gg-scm.io/pkg/git v0.8.2-0.20210123001950-af59ebfecf5e
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
 	golang.org/x/sys v0.0.0-20210123111255-9b0068b26619
+	zombiezen.com/go/bass v0.0.0-20200205030601-a12a557801d9
 	zombiezen.com/go/log v1.0.3
 )
