@@ -1,0 +1,39 @@
+{{ define "pageTitle" }}{{ .Name }}{{ end }}
+
+{{ define "main" }}
+<h1>{{ .Name }}</h1>
+
+{{- with .Objects }}
+<table class="PackfileTable">
+  <thead>
+    <tr>
+      <th scope="col">Offset</th>
+      <th scope="col">Size</th>
+      <th scope="col">Deltified?</th>
+      <th scope="col">Type</td>
+      <th scope="col">ID</td>
+    </tr>
+  </thead>
+  <tbody>
+    {{- range . }}
+    <tr>
+      <th scope="row" class="PackfileTable-offset">{{ .Offset }}</th>
+      <td class="PackfileTable-size">{{ .DecompressedSize }}</td>
+      <td class="PackfileTable-deltified">
+        {{- if eq .PackType $.OffsetDelta }}offset
+        {{- else if eq .PackType $.RefDelta }}ID
+        {{- end }}
+      </td>
+      <td class="PackfileTable-type">{{ .Type }}</td>
+      <td class="PackfileTable-id">{{ .ID }}</td>
+    </tr>
+    {{- end }}
+    <tr>
+      <td colspan="5">{{ $.Size }} bytes total</td>
+    </tr>
+  </tbody>
+</table>
+{{- else }}
+<p>No objects in packfile.</p>
+{{- end }}
+{{ end }}

@@ -21,11 +21,14 @@
 
   <h2>Packfiles</h2>
   {{- with .Packfiles }}
-  <ul>
+  <table>
     {{- range . }}
-    <li><a href="/packs/{{ . }}">{{ . }}</a></li>
+    <tr>
+      <td><a href="/packs/{{ .Name }}">{{ .Name }}</a></td>
+      <td>{{ template "time.html" .ModTime }}</td>
+    </tr>
     {{- end }}
-  </ul>
+  </table>
   {{- else }}
   <p>No packfiles available. Use the controls above to pull one.</p>
   {{- end }}

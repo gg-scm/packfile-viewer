@@ -1,0 +1,42 @@
+{{ define "pageTitle" }}Pull{{ end }}
+
+{{ define "main" }}
+<h1>Pull</h1>
+
+<form method="POST" action="/pull" data-controller="pull-form">
+  <turbo-frame id="PullForm-urlFrame" data-pull-form-target="urlFrame">
+    <div>
+      <label for="PullForm-url">URL</label>
+      <input
+        type="text"
+        inputmode="url"
+        name="url"
+        id="PullForm-url"
+        value="{{ .URL }}"
+        data-pull-form-target="url">
+      <button
+        type="button"
+        data-action="pull-form#refreshRefs">
+        Refresh
+      </button>
+    </div>
+    <div id="PullForm-urlError">
+      {{- with .URLError }}
+        <p class="FormError">{{ . }}</p>
+      {{- end }}
+    </div>
+    <div id="PullForm-refs">
+      {{- template "pull_refs.html" .Refs -}}
+    </div>
+    <div id="PullForm-refsError">
+      {{- with .RefsError }}
+        <p class="FormError">{{ . }}</p>
+      {{- end }}
+    </div>
+  </turbo-frame>
+
+  <div>
+    <input type="submit" value="Pull">
+  </div>
+</form>
+{{ end }}

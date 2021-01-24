@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<turbo-stream action="replace" target="PullForm-urlError">
+  <template>
+    {{- with .URLError }}
+      <p class="FormError">{{ . }}</p>
+    {{- end }}
+  </template>
+</turbo-stream>
+<turbo-stream action="replace" target="PullForm-refsError">
+  <template>
+    {{- with .RefsError }}
+      <p class="FormError">{{ . }}</p>
+    {{- end }}
+  </template>
+</turbo-stream>
+<turbo-stream action="replace" target="PullForm-refs">
+  <template>
+    {{- template "pull_refs.html" .Refs -}}
+  </template>
+</turbo-stream>

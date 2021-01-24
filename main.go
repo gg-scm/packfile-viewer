@@ -29,11 +29,14 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"gg-scm.io/pkg/git/githash"
+	"gg-scm.io/pkg/git/object"
+	"gg-scm.io/pkg/git/packfile"
 	"gg-scm.io/pkg/git/packfile/client"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
@@ -77,21 +80,38 @@ func (app *application) initRouter() {
 	app.router.Handle("/app.css", app.newStaticHandler("client/dist/app.css"))
 }
 
-const packfileExtension = ".pack"
+const (
+	packfileExtension  = ".pack"
+	packIndexExtension = ".idx"
+)
 
 func (app *application) index(ctx context.Context, r *request) (*response, error) {
+	type packInfo struct {
+		Name    string
+		ModTime time.Time
+	}
 	var data struct {
-		Packfiles []string
+		Packfiles []*packInfo
 	}
 	if entries, err := os.ReadDir(app.dir); err != nil && !os.IsNotExist(err) {
 		return nil, err
 	} else if err == nil {
 		for _, ent := range entries {
-			if name := ent.Name(); filepath.Ext(name) == packfileExtension {
-				data.Packfiles = append(data.Packfiles, strings.TrimSuffix(name, packfileExtension))
+			if name := ent.Name(); filepath.Ext(name) != packfileExtension {
+				continue
 			}
+			info := &packInfo{
+				Name: strings.TrimSuffix(ent.Name(), packfileExtension),
+			}
+			if stat, err := ent.Info(); err == nil {
+				info.ModTime = stat.ModTime()
+			}
+			data.Packfiles = append(data.Packfiles, info)
 		}
 	}
+	sort.Slice(data.Packfiles, func(i, j int) bool {
+		return data.Packfiles[i].ModTime.After(data.Packfiles[j].ModTime)
+	})
 	return &response{
 		templateName: "index.html",
 		data:         data,
@@ -166,6 +186,10 @@ func (app *application) pull(ctx context.Context, r *request) (*response, error)
 		data.URLError = err.Error()
 		return resp, nil
 	}
+	if u.Scheme != "https" && u.Scheme != "http" {
+		data.URLError = "only http and https URLs allowed"
+		return resp, nil
+	}
 	remote, err := client.NewRemote(u, nil)
 	if err != nil {
 		data.URLError = err.Error()
@@ -224,23 +248,44 @@ requestRefs:
 		return nil, err
 	}
 	fname := f.Name()
-	_, copyErr := io.Copy(f, pullResponse.Packfile)
-	closeErr := f.Close()
-	if copyErr != nil {
-		return nil, copyErr
-	}
-	if closeErr != nil {
-		return nil, closeErr
+	size, err := io.Copy(f, pullResponse.Packfile)
+	if err != nil {
+		f.Close()
+		os.Remove(fname)
+		return nil, err
 	}
 	packName := strings.TrimSuffix(filepath.Base(fname), ".pack")
+	if _, err := app.ensureIndex(ctx, packName, f, size); err != nil {
+		f.Close()
+		os.Remove(fname)
+		return nil, err
+	}
+	err = f.Close()
+	if err != nil {
+		os.Remove(fname)
+		return nil, err
+	}
 	return nil, seeOther("/packs/" + packName)
 }
 
 func (app *application) viewPackfile(ctx context.Context, r *request) (*response, error) {
+	type objectHeader struct {
+		Offset           int64
+		DecompressedSize int64
+		Type             object.Type
+		ID               githash.SHA1
+		PackType         packfile.ObjectType
+	}
 	var data struct {
-		Name string
+		Name        string
+		Size        int64
+		Objects     []objectHeader
+		RefDelta    packfile.ObjectType
+		OffsetDelta packfile.ObjectType
 	}
 	data.Name = r.pathVars["pack"]
+	data.RefDelta = packfile.RefDelta
+	data.OffsetDelta = packfile.OffsetDelta
 	f, err := os.Open(filepath.Join(app.dir, data.Name+packfileExtension))
 	if os.IsNotExist(err) {
 		return nil, errNotFound
@@ -249,10 +294,74 @@ func (app *application) viewPackfile(ctx context.Context, r *request) (*response
 		return nil, err
 	}
 	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	data.Size = info.Size()
+	idx, err := app.ensureIndex(ctx, data.Name, f, data.Size)
+	if err != nil {
+		return nil, err
+	}
+	data.Objects = make([]objectHeader, 0, len(idx.Offsets))
+	bf := packfile.NewBufferedReadSeeker(f)
+	for i, off := range idx.Offsets {
+		hdr := objectHeader{
+			Offset: off,
+			ID:     idx.ObjectIDs[i],
+		}
+		if _, err := bf.Seek(off, io.SeekStart); err == nil {
+			if diskHdr, _ := packfile.ReadHeader(off, bf); diskHdr != nil {
+				hdr.PackType = diskHdr.Type
+				hdr.DecompressedSize = diskHdr.Size
+				hdr.Type = diskHdr.Type.NonDelta()
+			}
+			if hdr.Type == "" {
+				hdr.Type, _ = packfile.ResolveType(bf, off, &packfile.UndeltifyOptions{
+					Index: idx,
+				})
+			}
+		}
+		data.Objects = append(data.Objects, hdr)
+	}
+	sort.Slice(data.Objects, func(i, j int) bool {
+		return data.Objects[i].Offset < data.Objects[j].Offset
+	})
 	return &response{
 		templateName: "packfile.html",
 		data:         data,
 	}, nil
+}
+
+func (app *application) ensureIndex(ctx context.Context, name string, f io.ReaderAt, fileSize int64) (*packfile.Index, error) {
+	idxFilename := filepath.Join(app.dir, name+packIndexExtension)
+	idxFile, err := os.OpenFile(idxFilename, os.O_RDWR|os.O_CREATE, 0o666)
+	if err != nil {
+		return nil, err
+	}
+	defer idxFile.Close()
+	if stat, err := idxFile.Stat(); err == nil && stat.Size() > 0 {
+		// File already has data: read the index from it.
+		return packfile.ReadIndex(idxFile)
+	}
+	idx, err := packfile.BuildIndex(f, fileSize)
+	if err != nil {
+		return nil, err
+	}
+	encodeErr := idx.EncodeV2(idxFile)
+	closeErr := idxFile.Close()
+	if encodeErr != nil {
+		log.Warnf(ctx, "Saving %s index: %v", name, encodeErr)
+	}
+	if closeErr != nil {
+		log.Warnf(ctx, "Saving %s index: %v", name, closeErr)
+	}
+	if encodeErr != nil || closeErr != nil {
+		if rmErr := os.Remove(idxFilename); rmErr != nil {
+			log.Warnf(ctx, "Could not clean up failed index: %v", rmErr)
+		}
+	}
+	return idx, nil
 }
 
 func main() {
