@@ -1,0 +1,64 @@
+{{ define "pageTitle" }}{{ .Type }} {{ .ObjectID.Short }}{{ end }}
+
+{{ define "main" }}
+<h1>{{ .Type }} {{ .ObjectID }}</h1>
+<div class="Object-navBack">Back to <a href="/packs/{{ .PackName }}">packfile</a></div>
+
+{{- if eq .Type "blob" }}
+  {{- if .TooBig }}
+  <p>Blob is too large to be shown.</p>
+  {{- else if isBinary .Raw }}
+  <p>Binary blob</p>
+  {{- else }}
+    <pre class="Blob">
+      {{- .Raw | printf "%s" -}}
+    </pre>
+  {{- end }}
+{{- end }}
+
+{{- with .Tree }}
+  <table class="Tree">
+    <tbody>
+      {{- range . }}
+        <tr>
+          <td class="Tree-mode">{{ .Mode }}</td>
+          <th class="Tree-name" scope="row">{{ .Name }}</th>
+          <td class="Tree-object"><a href="/packs/{{ $.PackName }}/{{ .ObjectID }}">{{ .ObjectID }}</a></td>
+        </tr>
+      {{- end }}
+    </tbody>
+  </table>
+{{- end }}
+
+{{- with .Commit }}
+  <div class="Commit">
+    <div>
+      <b>tree</b> <a href="/packs/{{ $.PackName }}/{{ .Tree }}">{{ .Tree }}</a><br>
+      {{- range .Parents }}
+      <b>parent</b> <a href="/packs/{{ $.PackName }}/{{ . }}">{{ . }}</a><br>
+      {{- end }}
+      <b>author</b> {{ .Author }} {{ template "commit_time.html" .AuthorTime }}<br>
+      <b>committer</b> {{ .Committer }} {{ template "commit_time.html" .CommitTime }}
+      {{- if .GPGSignature -}}
+        <br>
+        <b>gpgsig</b> &hellip;
+      {{- end }}
+    </div>
+
+    <pre class="Commit-message">{{ .Message }}</pre>
+  </div>
+{{- end }}
+
+{{- with .Tag }}
+  <div class="Tag">
+    <div>
+      <b>object</b> <a href="/packs/{{ $.PackName }}/{{ .ObjectID }}">{{ .ObjectID }}</a><br>
+      <b>type</b> {{ .ObjectType }}<br>
+      <b>tag</b> {{ .Name }}<br>
+      <b>tagger</b> {{ .Tagger }} {{ template "commit_time.html" .Time }}<br>
+    </div>
+
+    <pre class="Tag-message">{{ .Message }}</pre>
+  </div>
+{{- end }}
+{{ end }}

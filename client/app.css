@@ -29,6 +29,35 @@ html, body {
 .IndexTable-time {
   padding: 0 0 0 0.3rem;
 }
+.Object-navBack {
+  margin: 1rem 0;
+  padding: 0;
+}
+.Commit, .Tag {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.9rem;
+}
+.Commit-message, .Tag-message {
+  font-family: inherit;
+  font-size: 1rem;
+}
+.Tree {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.9rem;
+}
+.Tree-mode {
+  text-align: right;
+  padding: 0.1rem 0.3rem 0.1rem 0;
+}
+.Tree-name {
+  font-weight: normal;
+  padding: 0.1rem 0.3rem;
+  text-align: left;
+}
+.Tree-object {
+  padding: 0.1rem 0 0.1rem 0.3rem;
+  text-align: left;
+}
 #PullForm-url {
   width: 30em;
 }

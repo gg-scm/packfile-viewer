@@ -135,6 +135,9 @@ func (h htmlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			return fmt.Sprintf("%.1f GiB", f), nil
 		},
+		"isBinary": func(b []byte) bool {
+			return bytes.IndexByte(b, 0) != -1
+		},
 	}
 	var contentType string
 	var t *template.Template

@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -76,6 +77,11 @@ func (app *application) initRouter() {
 		http.MethodHead: app.newHTMLHandler(app.viewPackfile),
 		http.MethodGet:  app.newHTMLHandler(app.viewPackfile),
 	})
+	app.router.Handle("/packs/{pack:[-_a-zA-Z0-9]+}/{object:[a-fA-F0-9]+}", handlers.MethodHandler{
+		http.MethodHead: app.newHTMLHandler(app.viewObject),
+		http.MethodGet:  app.newHTMLHandler(app.viewObject),
+	})
+
 	app.router.Handle("/app.js", app.newStaticHandler("client/dist/app.js"))
 	app.router.Handle("/app.css", app.newStaticHandler("client/dist/app.css"))
 }
@@ -364,6 +370,76 @@ func (app *application) ensureIndex(ctx context.Context, name string, f io.Reade
 		}
 	}
 	return idx, nil
+}
+
+func (app *application) viewObject(ctx context.Context, r *request) (*response, error) {
+	var data struct {
+		PackName string
+		ObjectID githash.SHA1
+
+		Type   object.Type
+		Tree   object.Tree
+		Commit *object.Commit
+		Tag    *object.Tag
+		Raw    []byte
+		TooBig bool
+	}
+	data.PackName = r.pathVars["pack"]
+	var err error
+	data.ObjectID, err = githash.ParseSHA1(r.pathVars["object"])
+	if err != nil {
+		return nil, errNotFound
+	}
+	f, err := os.Open(filepath.Join(app.dir, data.PackName+packfileExtension))
+	if os.IsNotExist(err) {
+		return nil, errNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	idx, err := app.ensureIndex(ctx, data.PackName, f, info.Size())
+	if err != nil {
+		return nil, err
+	}
+	i := idx.FindID(data.ObjectID)
+	if i == -1 {
+		return nil, errNotFound
+	}
+	bf := packfile.NewBufferedReadSeeker(f)
+	var content io.Reader
+	data.Type, content, err = new(packfile.Undeltifier).Undeltify(bf, idx.Offsets[i], &packfile.UndeltifyOptions{
+		Index: idx,
+	})
+	if err != nil {
+		return nil, err
+	}
+	const rawLimit = 100 << 10 // 100 KiB
+	data.Raw, err = ioutil.ReadAll(io.LimitReader(content, rawLimit+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data.Raw) > rawLimit {
+		data.Raw = nil
+		data.TooBig = true
+	} else {
+		switch data.Type {
+		case object.TypeTree:
+			data.Tree, _ = object.ParseTree(data.Raw)
+		case object.TypeCommit:
+			data.Commit, _ = object.ParseCommit(data.Raw)
+		case object.TypeTag:
+			data.Tag, _ = object.ParseTag(data.Raw)
+		}
+	}
+	return &response{
+		templateName: "object.html",
+		data:         data,
+	}, nil
 }
 
 func main() {

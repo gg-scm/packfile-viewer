@@ -25,7 +25,9 @@
         {{- end }}
       </td>
       <td class="PackfileTable-type">{{ .Type }}</td>
-      <td class="PackfileTable-id">{{ .ID }}</td>
+      <td class="PackfileTable-id">
+        <a href="/packs/{{ $.Name }}/{{ .ID }}">{{ .ID }}</a>
+      </td>
     </tr>
     {{- end }}
     <tr>
