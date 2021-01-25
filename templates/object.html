@@ -7,20 +7,20 @@
 </div>
 <h1 class="PageTitle">{{ .Type }} {{ .ObjectID }}</h1>
 <div class="Object-raw">
-  <a href="/packs/{{ .Pack.Name }}/raw/{{ .ObjectID }}" data-turbo="false">Raw</a>
+  <a href="/packs/{{ .Pack.Name }}/objects/raw/{{ .ObjectID }}" data-turbo="false">Raw</a>
 </div>
 
 {{- if eq .Type "blob" }}
   {{- if eq .MediaType "image/bmp" "image/gif" "image/jpeg" "image/png" "image/webp" }}
     <img
-      src="/packs/{{ .Pack.Name }}/raw/{{ .ObjectID }}"
+      src="/packs/{{ .Pack.Name }}/objects/raw/{{ .ObjectID }}"
       class="Blob--image"
       alt="{{ .ObjectID }}">
   {{- else if eq .MediaType "text/plain" }}
     {{- if .TooBig }}
       <p>
         Blob is too large to be shown ({{ .Size | byteSize }}).
-        <a href="/packs/{{ .Pack.Name }}/raw/{{ .ObjectID }}" data-turbo="false">View raw</a>
+        <a href="/packs/{{ .Pack.Name }}/objects/raw/{{ .ObjectID }}" data-turbo="false">View raw</a>
       </p>
     {{- else }}
       <pre class="Blob">
@@ -30,7 +30,7 @@
   {{- else }}
     <p>
       {{ .Size | byteSize }} binary blob (detected {{ .MediaType }}).
-      <a href="/packs/{{ .Pack.Name }}/raw/{{ .ObjectID }}" data-turbo="false">Download</a>
+      <a href="/packs/{{ .Pack.Name }}/objects/raw/{{ .ObjectID }}" data-turbo="false">Download</a>
     </p>
   {{- end }}
 {{- end }}
@@ -42,7 +42,7 @@
         <tr>
           <td class="Tree-mode">{{ .Mode }}</td>
           <th class="Tree-name" scope="row">{{ .Name }}</th>
-          <td class="Tree-object"><a href="/packs/{{ $.Pack.Name }}/{{ .ObjectID }}">{{ .ObjectID }}</a></td>
+          <td class="Tree-object"><a href="/packs/{{ $.Pack.Name }}/objects/{{ .ObjectID }}">{{ .ObjectID }}</a></td>
         </tr>
       {{- end }}
     </tbody>
@@ -52,9 +52,9 @@
 {{- with .Commit }}
   <div class="Commit">
     <div>
-      <b>tree</b> <a href="/packs/{{ $.Pack.Name }}/{{ .Tree }}">{{ .Tree }}</a><br>
+      <b>tree</b> <a href="/packs/{{ $.Pack.Name }}/objects/{{ .Tree }}">{{ .Tree }}</a><br>
       {{- range .Parents }}
-      <b>parent</b> <a href="/packs/{{ $.Pack.Name }}/{{ . }}">{{ . }}</a><br>
+      <b>parent</b> <a href="/packs/{{ $.Pack.Name }}/objects/{{ . }}">{{ . }}</a><br>
       {{- end }}
       <b>author</b> {{ .Author }} {{ template "commit_time.html" .AuthorTime }}<br>
       <b>committer</b> {{ .Committer }} {{ template "commit_time.html" .CommitTime }}
@@ -71,7 +71,7 @@
 {{- with .Tag }}
   <div class="Tag">
     <div>
-      <b>object</b> <a href="/packs/{{ $.Pack.Name }}/{{ .ObjectID }}">{{ .ObjectID }}</a><br>
+      <b>object</b> <a href="/packs/{{ $.Pack.Name }}/objects/{{ .ObjectID }}">{{ .ObjectID }}</a><br>
       <b>type</b> {{ .ObjectType }}<br>
       <b>tag</b> {{ .Name }}<br>
       <b>tagger</b> {{ .Tagger }} {{ template "commit_time.html" .Time }}<br>

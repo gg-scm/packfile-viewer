@@ -67,7 +67,7 @@ func (app *application) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *application) initRouter() {
-	app.router = mux.NewRouter()
+	app.router = mux.NewRouter().StrictSlash(true)
 	app.router.Handle("/", handlers.MethodHandler{
 		http.MethodHead: app.newHTMLHandler(app.index),
 		http.MethodGet:  app.newHTMLHandler(app.index),
@@ -81,11 +81,15 @@ func (app *application) initRouter() {
 		http.MethodHead: app.newHTMLHandler(app.viewPackfile),
 		http.MethodGet:  app.newHTMLHandler(app.viewPackfile),
 	})
-	app.router.Handle("/packs/{pack:[-_a-zA-Z0-9]+}/{object:[a-fA-F0-9]+}", handlers.MethodHandler{
+	app.router.Handle("/packs/{pack:[-_a-zA-Z0-9]+}/objects/", handlers.MethodHandler{
+		http.MethodHead: app.newHTMLHandler(app.packfileObjects),
+		http.MethodGet:  app.newHTMLHandler(app.packfileObjects),
+	})
+	app.router.Handle("/packs/{pack:[-_a-zA-Z0-9]+}/objects/{object:[a-fA-F0-9]+}", handlers.MethodHandler{
 		http.MethodHead: app.newHTMLHandler(app.viewObject),
 		http.MethodGet:  app.newHTMLHandler(app.viewObject),
 	})
-	app.router.Handle("/packs/{pack:[-_a-zA-Z0-9]+}/raw/{object:[a-fA-F0-9]+}", handlers.MethodHandler{
+	app.router.Handle("/packs/{pack:[-_a-zA-Z0-9]+}/objects/raw/{object:[a-fA-F0-9]+}", handlers.MethodHandler{
 		http.MethodHead: http.HandlerFunc(app.downloadObject),
 		http.MethodGet:  http.HandlerFunc(app.downloadObject),
 	})
@@ -322,6 +326,21 @@ requestRefs:
 }
 
 func (app *application) viewPackfile(ctx context.Context, r *request) (*response, error) {
+	var data struct {
+		packInfo
+	}
+	data.Name = r.pathVars["pack"]
+	if _, err := os.Stat(filepath.Join(app.dir, data.Name+packfileExtension)); os.IsNotExist(err) {
+		return nil, errNotFound
+	}
+	data.packInfo = *app.getPackInfo(ctx, data.Name) // fills in data.Size
+	return &response{
+		templateName: "packfile.html",
+		data:         data,
+	}, nil
+}
+
+func (app *application) packfileObjects(ctx context.Context, r *request) (*response, error) {
 	type objectHeader struct {
 		Offset           int64
 		DecompressedSize int64
@@ -334,10 +353,15 @@ func (app *application) viewPackfile(ctx context.Context, r *request) (*response
 		Objects     []objectHeader
 		RefDelta    packfile.ObjectType
 		OffsetDelta packfile.ObjectType
+
+		PrevAfter int64
+		NextAfter int64
 	}
 	data.Name = r.pathVars["pack"]
+	after, _ := strconv.ParseInt(r.form.Get("after"), 10, 64)
 	data.RefDelta = packfile.RefDelta
 	data.OffsetDelta = packfile.OffsetDelta
+
 	f, err := os.Open(filepath.Join(app.dir, data.Name+packfileExtension))
 	if os.IsNotExist(err) {
 		return nil, errNotFound
@@ -354,29 +378,45 @@ func (app *application) viewPackfile(ctx context.Context, r *request) (*response
 	data.Objects = make([]objectHeader, 0, len(idx.Offsets))
 	bf := packfile.NewBufferedReadSeeker(f)
 	for i, off := range idx.Offsets {
-		hdr := objectHeader{
+		data.Objects = append(data.Objects, objectHeader{
 			Offset: off,
 			ID:     idx.ObjectIDs[i],
-		}
-		if _, err := bf.Seek(off, io.SeekStart); err == nil {
-			if diskHdr, _ := packfile.ReadHeader(off, bf); diskHdr != nil {
+		})
+	}
+	sort.Slice(data.Objects, func(i, j int) bool {
+		return data.Objects[i].Offset < data.Objects[j].Offset
+	})
+	startPos := sort.Search(len(data.Objects), func(i int) bool {
+		return data.Objects[i].Offset > after
+	})
+	const objectsPerPage = 50
+	if startPos == 0 {
+		data.PrevAfter = -1
+	} else if startPos > objectsPerPage {
+		data.PrevAfter = data.Objects[startPos-objectsPerPage-1].Offset
+	}
+	data.Objects = data.Objects[startPos:]
+	if len(data.Objects) > objectsPerPage {
+		data.Objects = data.Objects[:objectsPerPage]
+		data.NextAfter = data.Objects[objectsPerPage-1].Offset
+	}
+	for i := range data.Objects {
+		hdr := &data.Objects[i]
+		if _, err := bf.Seek(hdr.Offset, io.SeekStart); err == nil {
+			if diskHdr, _ := packfile.ReadHeader(hdr.Offset, bf); diskHdr != nil {
 				hdr.PackType = diskHdr.Type
 				hdr.DecompressedSize = diskHdr.Size
 				hdr.Type = diskHdr.Type.NonDelta()
 			}
 			if hdr.Type == "" {
-				hdr.Type, _ = packfile.ResolveType(bf, off, &packfile.UndeltifyOptions{
+				hdr.Type, _ = packfile.ResolveType(bf, hdr.Offset, &packfile.UndeltifyOptions{
 					Index: idx,
 				})
 			}
 		}
-		data.Objects = append(data.Objects, hdr)
 	}
-	sort.Slice(data.Objects, func(i, j int) bool {
-		return data.Objects[i].Offset < data.Objects[j].Offset
-	})
 	return &response{
-		templateName: "packfile.html",
+		templateName: "packfile_objects.html",
 		data:         data,
 	}, nil
 }

@@ -1,0 +1,69 @@
+{{ define "pageTitle" }}
+  {{- template "pack_display_name.html" . -}}
+{{ end }}
+
+{{ define "main" }}
+<h1 class="PageTitle">
+  {{- template "pack_display_name.html" . -}}
+</h1>
+
+<h2>Objects</h2>
+<turbo-frame id="pack-{{ .Name }}-objects">
+  <div class="PackfileObjects">
+    {{- with .Objects }}
+      <table class="PackfileTable">
+        <thead>
+          <tr>
+            <th scope="col">Offset</th>
+            <th scope="col">Size</th>
+            <th scope="col">Deltified?</th>
+            <th scope="col">Type</td>
+            <th scope="col">ID</td>
+          </tr>
+        </thead>
+        <tbody>
+          {{- range . }}
+          <tr>
+            <th scope="row" class="PackfileTable-offset">{{ .Offset }}</th>
+            <td class="PackfileTable-size">{{ .DecompressedSize | byteSize }}</td>
+            <td class="PackfileTable-deltified">
+              {{- if eq .PackType $.OffsetDelta }}offset
+              {{- else if eq .PackType $.RefDelta }}ID
+              {{- end }}
+            </td>
+            <td class="PackfileTable-type">{{ .Type }}</td>
+            <td class="PackfileTable-id">
+              <a href="/packs/{{ $.Name }}/objects/{{ .ID }}" data-turbo-frame="_top">{{ .ID }}</a>
+            </td>
+          </tr>
+          {{- end }}
+        </tbody>
+        {{- if not $.NextAfter }}
+          <tfoot>
+            <tr>
+              <td colspan="5">{{ $.Size }} bytes total</td>
+            </tr>
+          </tfoot>
+        {{- end }}
+      </table>
+      <div class="PackfilePages">
+        {{- if ge $.PrevAfter 0 }}
+          <span class="PackfilePages-link PackfilePages-prev">
+            <a href="/packs/{{ $.Name }}/objects/">First Page</a>
+          </span>
+          <span class="PackfilePages-link PackfilePages-prev">
+            <a href="/packs/{{ $.Name }}/objects/?after={{ $.PrevAfter }}">Previous Page</a>
+          </span>
+        {{- end }}
+        {{- with $.NextAfter }}
+          <span class="PackfilePages-link PackfilePages-next">
+            <a href="/packs/{{ $.Name }}/objects/?after={{ . }}">Next Page</a>
+          </span>
+        {{- end }}
+      </div>
+    {{- else }}
+      <p>No objects in packfile.</p>
+    {{- end }}
+  </div>
+</turbo-frame>
+{{ end }}

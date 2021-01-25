@@ -21,7 +21,7 @@
       {{- range $ref, $commitID := . }}
       <tr>
         <th scope="row" class="Refs-name">{{ $ref }}</th>
-        <td class="Refs-target"><a href="/packs/{{ $.Name }}/{{ $commitID }}">{{ $commitID }}</a></td>
+        <td class="Refs-target"><a href="/packs/{{ $.Name }}/objects/{{ $commitID }}">{{ $commitID }}</a></td>
       </tr>
       {{- end }}
     </tbody>
@@ -31,39 +31,7 @@
 {{- end }}
 
 <h2>Objects</h2>
-{{- with .Objects }}
-<table class="PackfileTable">
-  <thead>
-    <tr>
-      <th scope="col">Offset</th>
-      <th scope="col">Size</th>
-      <th scope="col">Deltified?</th>
-      <th scope="col">Type</td>
-      <th scope="col">ID</td>
-    </tr>
-  </thead>
-  <tbody>
-    {{- range . }}
-    <tr>
-      <th scope="row" class="PackfileTable-offset">{{ .Offset }}</th>
-      <td class="PackfileTable-size">{{ .DecompressedSize | byteSize }}</td>
-      <td class="PackfileTable-deltified">
-        {{- if eq .PackType $.OffsetDelta }}offset
-        {{- else if eq .PackType $.RefDelta }}ID
-        {{- end }}
-      </td>
-      <td class="PackfileTable-type">{{ .Type }}</td>
-      <td class="PackfileTable-id">
-        <a href="/packs/{{ $.Name }}/{{ .ID }}">{{ .ID }}</a>
-      </td>
-    </tr>
-    {{- end }}
-    <tr>
-      <td colspan="5">{{ $.Size }} bytes total</td>
-    </tr>
-  </tbody>
-</table>
-{{- else }}
-<p>No objects in packfile.</p>
-{{- end }}
+<turbo-frame id="pack-{{ .Name }}-objects" src="/packs/{{ .Name }}/objects/">
+  <div>Loading&hellip;</div>
+</turbo-frame>
 {{ end }}
