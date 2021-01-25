@@ -1,8 +1,36 @@
-{{ define "pageTitle" }}{{ .Name }}{{ end }}
+{{ define "pageTitle" }}
+  {{- template "pack_display_name.html" . -}}
+{{ end }}
 
 {{ define "main" }}
-<h1 class="PageTitle">{{ .Name }}</h1>
+<h1 class="PageTitle">
+  {{- template "pack_display_name.html" . -}}
+</h1>
 
+<div>
+  Pulled on {{ template "time.html" .PullTime }}.
+  {{- with .URL }}
+  <a href="/pull?url={{ . }}">Pull again</a>
+  {{- end }}
+</div>
+
+<h2>Refs</h2>
+{{- with .Refs }}
+  <table>
+    <tbody>
+      {{- range $ref, $commitID := . }}
+      <tr>
+        <th scope="row" class="Refs-name">{{ $ref }}</th>
+        <td class="Refs-target"><a href="/packs/{{ $.Name }}/{{ $commitID }}">{{ $commitID }}</a></td>
+      </tr>
+      {{- end }}
+    </tbody>
+  </table>
+{{- else }}
+  <p>No known refs.</p>
+{{- end }}
+
+<h2>Objects</h2>
 {{- with .Objects }}
 <table class="PackfileTable">
   <thead>

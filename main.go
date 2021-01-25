@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -96,14 +97,19 @@ func (app *application) initRouter() {
 const (
 	packfileExtension  = ".pack"
 	packIndexExtension = ".idx"
+	packInfoExtension  = ".json"
 )
 
+type packInfo struct {
+	Name string `json:"-"`
+	Size int64  `json:"-"`
+
+	URL      string                       `json:"url"`
+	PullTime time.Time                    `json:"time"`
+	Refs     map[githash.Ref]githash.SHA1 `json:"refs,omitempty"`
+}
+
 func (app *application) index(ctx context.Context, r *request) (*response, error) {
-	type packInfo struct {
-		Name    string
-		ModTime time.Time
-		Size    int64
-	}
 	var data struct {
 		Packfiles []*packInfo
 	}
@@ -114,23 +120,37 @@ func (app *application) index(ctx context.Context, r *request) (*response, error
 			if name := ent.Name(); filepath.Ext(name) != packfileExtension {
 				continue
 			}
-			info := &packInfo{
-				Name: strings.TrimSuffix(ent.Name(), packfileExtension),
-			}
-			if stat, err := ent.Info(); err == nil {
-				info.ModTime = stat.ModTime()
-				info.Size = stat.Size()
-			}
-			data.Packfiles = append(data.Packfiles, info)
+			name := strings.TrimSuffix(ent.Name(), packfileExtension)
+			data.Packfiles = append(data.Packfiles, app.getPackInfo(ctx, name))
 		}
 	}
 	sort.Slice(data.Packfiles, func(i, j int) bool {
-		return data.Packfiles[i].ModTime.After(data.Packfiles[j].ModTime)
+		return data.Packfiles[i].PullTime.After(data.Packfiles[j].PullTime)
 	})
 	return &response{
 		templateName: "index.html",
 		data:         data,
 	}, nil
+}
+
+func (app *application) getPackInfo(ctx context.Context, name string) *packInfo {
+	info := &packInfo{Name: name}
+	packPath := filepath.Join(app.dir, name+packfileExtension)
+	if stat, err := os.Stat(packPath); err != nil {
+		log.Warnf(ctx, "Getting info for %s: %v", name, err)
+	} else {
+		info.PullTime = stat.ModTime()
+		info.Size = stat.Size()
+	}
+	infoPath := filepath.Join(app.dir, info.Name+packInfoExtension)
+	if infoData, err := ioutil.ReadFile(infoPath); err != nil && !os.IsNotExist(err) {
+		log.Warnf(ctx, "Getting info for %s: %v", name, err)
+	} else if err == nil {
+		if err := json.Unmarshal(infoData, &info); err != nil {
+			log.Warnf(ctx, "Getting info for %s: %v", name, err)
+		}
+	}
+	return info
 }
 
 type pullFormParams struct {
@@ -205,6 +225,14 @@ func (app *application) pull(ctx context.Context, r *request) (*response, error)
 		data.URLError = "only http and https URLs allowed"
 		return resp, nil
 	}
+	selectedRefs := make(map[string]struct{})
+	for _, r := range r.form["ref"] {
+		selectedRefs[r] = struct{}{}
+	}
+	if len(selectedRefs) == 0 {
+		data.RefsError = "No refs selected."
+		return resp, nil
+	}
 	remote, err := client.NewRemote(u, nil)
 	if err != nil {
 		data.URLError = err.Error()
@@ -222,25 +250,26 @@ func (app *application) pull(ctx context.Context, r *request) (*response, error)
 		data.URLError = err.Error()
 		return resp, nil
 	}
+	info := &packInfo{
+		URL:  data.URL,
+		Refs: make(map[githash.Ref]githash.SHA1, len(selectedRefs)),
+	}
+	pullRequest := new(client.PullRequest)
 	for _, ref := range refs {
-		selected := false
-		for _, refName := range r.form["ref"] {
-			if ref.Name.String() == refName {
-				selected = true
-				break
-			}
-		}
+		_, selected := selectedRefs[ref.Name.String()]
 		data.Refs = append(data.Refs, &pullFormRef{
 			Ref:      ref,
 			Selected: selected,
 		})
+		if selected {
+			info.Refs[ref.Name] = ref.ObjectID
+			pullRequest.Want = append(pullRequest.Want, ref.ObjectID)
+		}
 	}
-	pullRequest := new(client.PullRequest)
 requestRefs:
-	for _, refName := range r.form["ref"] {
+	for refName := range selectedRefs {
 		for _, ref := range data.Refs {
 			if ref.Name.String() == refName {
-				pullRequest.Want = append(pullRequest.Want, ref.ObjectID)
 				continue requestRefs
 			}
 		}
@@ -248,6 +277,7 @@ requestRefs:
 		return resp, nil
 	}
 
+	info.PullTime = time.Now()
 	pullResponse, err := stream.Negotiate(pullRequest)
 	if err != nil {
 		data.URLError = err.Error()
@@ -269,7 +299,7 @@ requestRefs:
 		os.Remove(fname)
 		return nil, err
 	}
-	packName := strings.TrimSuffix(filepath.Base(fname), ".pack")
+	packName := strings.TrimSuffix(filepath.Base(fname), packfileExtension)
 	if _, err := app.ensureIndex(ctx, packName, f, size); err != nil {
 		f.Close()
 		os.Remove(fname)
@@ -279,6 +309,14 @@ requestRefs:
 	if err != nil {
 		os.Remove(fname)
 		return nil, err
+	}
+	if infoData, err := json.Marshal(info); err != nil {
+		log.Warnf(ctx, "Save packfile info for %s (%s): %v", packName, u.Redacted(), err)
+	} else {
+		infoPath := filepath.Join(app.dir, packName+packInfoExtension)
+		if err := ioutil.WriteFile(infoPath, infoData, 0o666); err != nil {
+			log.Warnf(ctx, "Save packfile info for %s (%s): %v", packName, u.Redacted(), err)
+		}
 	}
 	return nil, seeOther("/packs/" + packName)
 }
@@ -292,8 +330,7 @@ func (app *application) viewPackfile(ctx context.Context, r *request) (*response
 		PackType         packfile.ObjectType
 	}
 	var data struct {
-		Name        string
-		Size        int64
+		packInfo
 		Objects     []objectHeader
 		RefDelta    packfile.ObjectType
 		OffsetDelta packfile.ObjectType
@@ -309,11 +346,7 @@ func (app *application) viewPackfile(ctx context.Context, r *request) (*response
 		return nil, err
 	}
 	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	data.Size = info.Size()
+	data.packInfo = *app.getPackInfo(ctx, data.Name) // fills in data.Size
 	idx, err := app.ensureIndex(ctx, data.Name, f, data.Size)
 	if err != nil {
 		return nil, err
@@ -381,7 +414,7 @@ func (app *application) ensureIndex(ctx context.Context, name string, f io.Reade
 
 func (app *application) viewObject(ctx context.Context, r *request) (*response, error) {
 	var data struct {
-		PackName string
+		Pack     *packInfo
 		ObjectID githash.SHA1
 
 		object.Prefix
@@ -392,13 +425,14 @@ func (app *application) viewObject(ctx context.Context, r *request) (*response, 
 		MediaType string
 		TooBig    bool
 	}
-	data.PackName = r.pathVars["pack"]
+	packName := r.pathVars["pack"]
+	data.Pack = app.getPackInfo(ctx, packName)
 	var err error
 	data.ObjectID, err = githash.ParseSHA1(r.pathVars["object"])
 	if err != nil {
 		return nil, errNotFound
 	}
-	f, err := os.Open(filepath.Join(app.dir, data.PackName+packfileExtension))
+	f, err := os.Open(filepath.Join(app.dir, packName+packfileExtension))
 	if os.IsNotExist(err) {
 		return nil, errNotFound
 	}
@@ -410,7 +444,7 @@ func (app *application) viewObject(ctx context.Context, r *request) (*response, 
 	if err != nil {
 		return nil, err
 	}
-	idx, err := app.ensureIndex(ctx, data.PackName, f, info.Size())
+	idx, err := app.ensureIndex(ctx, packName, f, info.Size())
 	if err != nil {
 		return nil, err
 	}

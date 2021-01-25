@@ -25,9 +25,13 @@
     <tbody>
       {{- range . }}
       <tr>
-        <td class="IndexTable-name"><a href="/packs/{{ .Name }}">{{ .Name }}</a></td>
+        <td class="IndexTable-name">
+          <a href="/packs/{{ .Name }}">
+            {{- template "pack_display_name.html" . -}}
+          </a>
+        </td>
         <td class="IndexTable-size">{{ .Size | byteSize }}</td>
-        <td class="IndexTable-time">{{ template "time.html" .ModTime }}</td>
+        <td class="IndexTable-time">{{ template "time.html" .PullTime }}</td>
       </tr>
       {{- end }}
     </tbody>
