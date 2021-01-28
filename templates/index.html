@@ -2,19 +2,23 @@
 
 {{ define "main" }}
   <div>
-    <form method="GET" action="/pull">
+    <form method="GET" action="/pull" class="IndexPullForm">
       <div>
-        <label for="IndexPullForm-url">Git URL:</label>
-        <input
-          type="text"
-          inputmode="url"
-          autofocus
-          id="IndexPullForm-url"
-          name="url"
-          data-pull-form-target="url">
-        <input
-          type="submit"
-          value="Load">
+        <label class="IndexPullForm-label" for="IndexPullForm-url">Git URL</label>
+        <div class="IndexPullForm-urlBar">
+          <input
+            type="text"
+            inputmode="url"
+            autofocus
+            class="IndexPullForm-url"
+            id="IndexPullForm-url"
+            name="url"
+            data-pull-form-target="url">
+          <input
+            type="submit"
+            class="IndexPullForm-button"
+            value="Load">
+        </div>
       </div>
     </form>
   </div>

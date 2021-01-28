@@ -3,39 +3,45 @@
 {{ define "main" }}
 <h1 class="PageTitle">Pull</h1>
 
-<form method="POST" action="/pull" data-controller="pull-form">
+<form method="POST" action="/pull" data-controller="pull-form" class="PullForm">
   <turbo-frame id="PullForm-urlFrame" data-pull-form-target="urlFrame">
-    <div>
-      <label for="PullForm-url">URL</label>
-      <input
-        type="text"
-        inputmode="url"
-        name="url"
-        id="PullForm-url"
-        value="{{ .URL }}"
-        data-pull-form-target="url">
-      <button
-        type="button"
-        data-action="pull-form#refreshRefs">
-        Refresh
-      </button>
+    <div class="PullForm-field">
+      <label class="PullForm-label" for="PullForm-url">
+        URL
+      </label>
+      <div class="PullForm-urlBar">
+        <input
+          type="text"
+          inputmode="url"
+          name="url"
+          id="PullForm-url"
+          class="PullForm-url"
+          value="{{ .URL }}"
+          data-pull-form-target="url">
+        <button
+          type="button"
+          class="PullForm-urlRefreshButton"
+          data-action="pull-form#refreshRefs">
+          Refresh
+        </button>
+      </div>
+
+      <div id="js-PullForm-urlError">
+        {{- template "pull_error.html" .URLError -}}
+      </div>
     </div>
-    <div id="PullForm-urlError">
-      {{- with .URLError }}
-        <p class="FormError">{{ . }}</p>
-      {{- end }}
-    </div>
-    <div id="PullForm-refs">
-      {{- template "pull_refs.html" .Refs -}}
-    </div>
-    <div id="PullForm-refsError">
-      {{- with .RefsError }}
-        <p class="FormError">{{ . }}</p>
-      {{- end }}
+    <div class="PullForm-field">
+      <div id="js-PullForm-refs">
+        {{- template "pull_refs.html" .Refs -}}
+      </div>
+
+      <div id="js-PullForm-refsError">
+        {{- template "pull_error.html" .RefsError -}}
+      </div>
     </div>
   </turbo-frame>
 
-  <div>
+  <div class="PullForm-actions">
     <input type="submit" value="Pull">
   </div>
 </form>

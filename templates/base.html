@@ -10,8 +10,10 @@
   <script type="text/javascript" src="/app.js" defer></script>
 </head>
 <body>
-  <header class="Header">
-    <a href="/"><h1 class="SiteTitle">packfile viewer</h1></a>
+  <header>
+    <a href="/" class="SiteTitle-link">
+      <h1 class="SiteTitle">packfile viewer</h1>
+    </a>
   </header>
   <main>
     {{- block "main" . }}{{ end -}}

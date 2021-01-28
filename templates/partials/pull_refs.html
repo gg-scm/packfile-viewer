@@ -1,15 +1,16 @@
 {{- with . }}
-  <div>
-    <label for="PullForm-refsSelect">Refs</label>
-  </div>
-  <div>
-    <select id="PullForm-refsSelect" multiple name="ref">
-      {{- range . }}
-      <option value="{{ .Name }}"
-        {{- if eq .Name "HEAD" }} selected{{ end -}}>
-        {{- .Name -}}
-      </option>
-      {{- end }}
-    </select>
-  </div>
+  <label class="PullForm-label" for="PullForm-refsSelect">Refs</label>
+  <br>
+  <select
+    id="PullForm-refsSelect"
+    class="PullForm-refsSelect"
+    multiple
+    name="ref">
+    {{- range . }}
+    <option value="{{ .Name }}"
+      {{- if eq .Name "HEAD" }} selected{{ end -}}>
+      {{- .Name -}}
+    </option>
+    {{- end }}
+  </select>
 {{- end }}

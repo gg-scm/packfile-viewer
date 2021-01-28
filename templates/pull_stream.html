@@ -1,19 +1,15 @@
 <!DOCTYPE html>
-<turbo-stream action="replace" target="PullForm-urlError">
+<turbo-stream action="replace" target="js-PullForm-urlError">
   <template>
-    {{- with .URLError }}
-      <p class="FormError">{{ . }}</p>
-    {{- end }}
+    {{- template "pull_error.html" .URLError -}}
   </template>
 </turbo-stream>
-<turbo-stream action="replace" target="PullForm-refsError">
+<turbo-stream action="replace" target="js-PullForm-refsError">
   <template>
-    {{- with .RefsError }}
-      <p class="FormError">{{ . }}</p>
-    {{- end }}
+    {{- template "pull_error.html" .RefsError -}}
   </template>
 </turbo-stream>
-<turbo-stream action="replace" target="PullForm-refs">
+<turbo-stream action="replace" target="js-PullForm-refs">
   <template>
     {{- template "pull_refs.html" .Refs -}}
   </template>

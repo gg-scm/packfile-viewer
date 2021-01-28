@@ -16,38 +16,45 @@ limitations under the License.
 SPDX-License-Identifier: Apache-2.0
 */
 
-@import url('./pages/index.css');
-@import url('./pages/object.css');
-@import url('./pages/packfile.css');
-@import url('./pages/pull.css');
-
-html, body {
-  font-family: Arial, Helvetica, sans-serif;
-  margin: 0;
+.PullForm {
+  display: block;
+  max-width: 30rem;
+}
+.PullForm-field {
+  margin: 1rem 0;
   padding: 0;
 }
-header {
-  background: #dd750f;
-  color: white;
-  margin: 0;
-  padding: 0.5rem;
-}
-.SiteTitle {
-  color: white;
-  margin: 0;
-  padding: 0;
-}
-.SiteTitle-link {
-  text-decoration: none;
-}
-.PageTitle {
-  margin: 0 0 1rem;
-  padding: 0;
-}
-main {
-  margin: 0;
-  padding: 1.5rem 2rem;
-}
-label {
+.PullForm-label {
   font-weight: bold;
+}
+.PullForm-urlBar {
+  display: flex;
+  flex-direction: row;
+}
+.PullForm-url {
+  flex: 1;
+}
+.PullForm-urlRefreshButton {
+  margin: 0 0 0 0.25rem;
+}
+.PullForm-refsSelect {
+  min-height: 10em;
+  width: 100%;
+}
+.PullForm-error {
+  color: #860303;
+  font-weight: bold;
+}
+.PullForm-actions {
+  text-align: right;
+}
+.Refs-name {
+  font-weight: normal;
+  padding: 0.1rem 0.2rem 0.1rem 0;
+  text-align: left;
+}
+.Refs-target {
+  font-family: 'Courier New', Courier, monospace;
+  padding: 0.1rem 0 0.1rem 0.2rem;
+  text-align: left;
 }

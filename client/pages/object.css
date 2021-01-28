@@ -16,38 +16,40 @@ limitations under the License.
 SPDX-License-Identifier: Apache-2.0
 */
 
-@import url('./pages/index.css');
-@import url('./pages/object.css');
-@import url('./pages/packfile.css');
-@import url('./pages/pull.css');
-
-html, body {
-  font-family: Arial, Helvetica, sans-serif;
-  margin: 0;
+.Object-navBack {
+  margin: 1rem 0 0;
   padding: 0;
 }
-header {
-  background: #dd750f;
-  color: white;
-  margin: 0;
-  padding: 0.5rem;
-}
-.SiteTitle {
-  color: white;
-  margin: 0;
+.Object-raw {
+  font-size: 1.2rem;
+  margin: 0.1rem 0 1.5rem;
   padding: 0;
 }
-.SiteTitle-link {
-  text-decoration: none;
+.Commit, .Tag {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.9rem;
 }
-.PageTitle {
-  margin: 0 0 1rem;
-  padding: 0;
+.Commit-message, .Tag-message {
+  font-family: inherit;
+  font-size: 1rem;
 }
-main {
-  margin: 0;
-  padding: 1.5rem 2rem;
+.Tree {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.9rem;
 }
-label {
-  font-weight: bold;
+.Tree-mode {
+  text-align: right;
+  padding: 0.1rem 0.3rem 0.1rem 0;
+}
+.Tree-name {
+  font-weight: normal;
+  padding: 0.1rem 0.3rem;
+  text-align: left;
+}
+.Tree-object {
+  padding: 0.1rem 0 0.1rem 0.3rem;
+  text-align: left;
+}
+.Blob--image {
+  max-width: 100%;
 }
