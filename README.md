@@ -2,6 +2,8 @@
 
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v2.0%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
 
+<img src="screenshot.png" width="329" height="199" alt="Screenshot of packfile viewer with a listing of Git URLs">
+
 packfile-viewer is a demo application for the [`gg-scm.io/pkg/git/packfile`][]
 package. It allows you to fetch Git repositories and inspect their contents
 interactively, similar to [GitWeb][], but with more debugging details.
