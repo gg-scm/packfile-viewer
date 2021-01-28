@@ -30,6 +30,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -181,12 +182,7 @@ func (app *application) pullForm(ctx context.Context, r *request) (*response, er
 	if data.URL == "" {
 		return resp, nil
 	}
-	u, err := client.ParseURL(data.URL)
-	if err != nil {
-		data.URLError = err.Error()
-		return resp, nil
-	}
-	remote, err := client.NewRemote(u, nil)
+	_, remote, err := newRemote(data.URL)
 	if err != nil {
 		data.URLError = err.Error()
 		return resp, nil
@@ -220,13 +216,9 @@ func (app *application) pull(ctx context.Context, r *request) (*response, error)
 	}
 
 	data.URL = r.form.Get("url")
-	u, err := client.ParseURL(data.URL)
+	u, remote, err := newRemote(data.URL)
 	if err != nil {
 		data.URLError = err.Error()
-		return resp, nil
-	}
-	if u.Scheme != "https" && u.Scheme != "http" {
-		data.URLError = "only http and https URLs allowed"
 		return resp, nil
 	}
 	selectedRefs := make(map[string]struct{})
@@ -235,11 +227,6 @@ func (app *application) pull(ctx context.Context, r *request) (*response, error)
 	}
 	if len(selectedRefs) == 0 {
 		data.RefsError = "No refs selected."
-		return resp, nil
-	}
-	remote, err := client.NewRemote(u, nil)
-	if err != nil {
-		data.URLError = err.Error()
 		return resp, nil
 	}
 	stream, err := remote.StartPull(ctx)
@@ -323,6 +310,21 @@ requestRefs:
 		}
 	}
 	return nil, seeOther("/packs/" + packName)
+}
+
+func newRemote(urlstr string) (*url.URL, *client.Remote, error) {
+	u, err := client.ParseURL(strings.TrimSpace(urlstr))
+	if err != nil {
+		return nil, nil, err
+	}
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return nil, nil, fmt.Errorf("only http and https URLs allowed")
+	}
+	remote, err := client.NewRemote(u, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	return u, remote, nil
 }
 
 func (app *application) viewPackfile(ctx context.Context, r *request) (*response, error) {
