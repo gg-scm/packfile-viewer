@@ -434,7 +434,7 @@ func (app *application) ensureIndex(ctx context.Context, name string, f io.Reade
 		// File already has data: read the index from it.
 		return packfile.ReadIndex(idxFile)
 	}
-	idx, err := packfile.BuildIndex(f, fileSize)
+	idx, err := packfile.BuildIndex(f, fileSize, nil)
 	if err != nil {
 		return nil, err
 	}
