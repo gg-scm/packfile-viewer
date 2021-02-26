@@ -28,11 +28,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Install yb
-      run: |
-        cd ~
-        curl -fsSLO https://github.com/yourbase/yb/releases/download/v0.6.0/yb_v0.6.0_linux_amd64.zip
-        mkdir bin
-        unzip -j -d bin yb_v0.6.0_linux_amd64.zip yb_v0.6.0_linux_amd64/yb
+      uses: yourbase/install-yb-action@main
+      with:
+        version: v0.6.1
     - name: Check out code
       uses: actions/checkout@v2
     - name: Build
